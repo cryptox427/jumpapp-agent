@@ -7,7 +7,7 @@ import { prisma } from '@/lib/prisma'
 export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
-    if (!session?.user?.id) {
+    if (!session?.userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
@@ -15,7 +15,7 @@ export async function POST(request: NextRequest) {
     const { action, ruleId, ...data } = body
 
     const user = await prisma.user.findUnique({
-      where: { id: session.user.id },
+      where: { id: session.userId },
       include: {
         googleTokens: true,
         hubspotTokens: true,
@@ -81,7 +81,7 @@ export async function POST(request: NextRequest) {
 export async function GET(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
-    if (!session?.user?.id) {
+    if (!session?.userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
@@ -90,7 +90,7 @@ export async function GET(request: NextRequest) {
     const ruleId = searchParams.get('ruleId')
 
     const user = await prisma.user.findUnique({
-      where: { id: session.user.id },
+      where: { id: session.userId },
       include: {
         googleTokens: true,
         hubspotTokens: true,
