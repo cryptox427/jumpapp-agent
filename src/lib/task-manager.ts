@@ -4,7 +4,7 @@ export interface TaskStep {
   stepNumber: number
   action: string
   status: 'pending' | 'in_progress' | 'completed' | 'failed'
-  result?: any
+  result?: unknown
   error?: string
   timestamp: Date
 }
@@ -14,8 +14,8 @@ export interface TaskContext {
   taskId: string
   currentStep: number
   totalSteps: number
-  stepData: any
-  metadata: any
+  stepData: Record<string, unknown>
+  metadata: Record<string, unknown>
 }
 
 export class TaskManager {
@@ -25,14 +25,14 @@ export class TaskManager {
     this.userId = userId
   }
 
-  async createTask(title: string, description: string, type: 'EMAIL' | 'CALENDAR' | 'HUBSPOT' | 'GENERAL', metadata?: any) {
+  async createTask(title: string, description: string, type: 'EMAIL' | 'CALENDAR' | 'HUBSPOT' | 'GENERAL', metadata?: Record<string, unknown>) {
     const task = await prisma.task.create({
       data: {
         userId: this.userId,
         title,
         description,
         type,
-        metadata,
+        metadata: metadata as any,
         totalSteps: 1,
         currentStep: 0,
         stepData: {},
@@ -42,8 +42,8 @@ export class TaskManager {
     return task
   }
 
-  async updateTaskProgress(taskId: string, currentStep: number, stepData: any, status?: 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'FAILED' | 'CANCELLED') {
-    const updateData: any = {
+  async updateTaskProgress(taskId: string, currentStep: number, stepData: Record<string, unknown>, status?: 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'FAILED' | 'CANCELLED') {
+    const updateData: Record<string, unknown> = {
       currentStep,
       stepData,
     }
@@ -98,14 +98,14 @@ export class TaskManager {
       taskId: task.id,
       currentStep: task.currentStep,
       totalSteps: task.totalSteps,
-      stepData: task.stepData as any,
-      metadata: task.metadata as any,
+      stepData: task.stepData as Record<string, unknown>,
+      metadata: task.metadata as Record<string, unknown>,
     }
 
     return { task, context, userMessage }
   }
 
-  async executeTaskStep(taskId: string, stepAction: string, stepData: any) {
+  async executeTaskStep(taskId: string, stepAction: string, stepData: Record<string, unknown>) {
     const task = await this.getTaskById(taskId)
     if (!task) {
       throw new Error('Task not found')
@@ -116,19 +116,19 @@ export class TaskManager {
       const updatedTask = await this.updateTaskProgress(
         taskId,
         task.currentStep + 1,
-        { ...task.stepData, [task.currentStep]: stepData },
+        { ...(task.stepData as Record<string, unknown> || {}), [task.currentStep]: stepData },
         'IN_PROGRESS'
       )
 
       return { task: updatedTask, result: stepData }
     } catch (error) {
       // Mark task as failed
-      await this.updateTaskProgress(taskId, task.currentStep, task.stepData, 'FAILED')
+      await this.updateTaskProgress(taskId, task.currentStep, task.stepData as Record<string, unknown>, 'FAILED')
       throw error
     }
   }
 
-  async completeTask(taskId: string, finalResult?: any) {
+  async completeTask(taskId: string, finalResult?: unknown) {
     const task = await this.getTaskById(taskId)
     if (!task) {
       throw new Error('Task not found')
@@ -137,7 +137,7 @@ export class TaskManager {
     const updatedTask = await this.updateTaskProgress(
       taskId,
       task.totalSteps,
-      { ...task.stepData, final: finalResult },
+      { ...(task.stepData as Record<string, unknown> || {}), final: finalResult },
       'COMPLETED'
     )
 
@@ -153,7 +153,7 @@ export class TaskManager {
     const updatedTask = await this.updateTaskProgress(
       taskId,
       task.currentStep,
-      { ...task.stepData, cancellationReason: reason },
+      { ...(task.stepData as Record<string, unknown> || {}), cancellationReason: reason },
       'CANCELLED'
     )
 
@@ -161,7 +161,7 @@ export class TaskManager {
   }
 
   // Helper method to create multi-step tasks
-  async createMultiStepTask(title: string, description: string, steps: string[], type: 'EMAIL' | 'CALENDAR' | 'HUBSPOT' | 'GENERAL', metadata?: any) {
+  async createMultiStepTask(title: string, description: string, steps: string[], type: 'EMAIL' | 'CALENDAR' | 'HUBSPOT' | 'GENERAL', metadata?: Record<string, unknown>) {
     const task = await prisma.task.create({
       data: {
         userId: this.userId,

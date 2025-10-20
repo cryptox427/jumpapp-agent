@@ -12,19 +12,24 @@ export class RAGService {
     this.userId = userId
   }
 
-  private async generateEmbedding(text: string): Promise<number[]> {
+  async generateEmbedding(text: string): Promise<number[]> {
     try {
+      // Clean and truncate text for embedding
+      const cleanText = text.replace(/\s+/g, ' ').trim().substring(0, 8000)
+      
       const response = await openai.embeddings.create({
-        model: 'text-embedding-3-small',
-        input: text,
+        model: "text-embedding-3-small",
+        input: cleanText,
       })
+      
       return response.data[0].embedding
     } catch (error) {
       console.error('Error generating embedding:', error)
-      return []
+      throw error
     }
   }
 
+  // Calculate cosine similarity between two vectors
   private cosineSimilarity(a: number[], b: number[]): number {
     if (a.length !== b.length) return 0
     
@@ -51,8 +56,10 @@ export class RAGService {
       })
 
       if (googleService) {
+        // Use Gmail API to search directly
         return await this.searchEmailsFromGmail(query, limit, googleService)
       } else {
+        // Fallback to database search
         return await this.searchEmailsFromDatabase(query, limit)
       }
     } catch (error) {
@@ -65,10 +72,100 @@ export class RAGService {
     try {
       // Simplified Gmail search for now
       console.log('📧 Gmail search simulation for query:', query)
+      
       return []
     } catch (error) {
       console.error('Error searching emails from Gmail:', error)
       return []
+    }
+  }
+      
+      // Search Gmail
+      const response = await gmail.users.messages.list({
+        userId: 'me',
+        q: gmailQuery,
+        maxResults: Math.min(limit * 3, 50), // Get more results for better filtering
+      })
+
+      const messages = response.data.messages || []
+      const results = []
+
+      // Process each message
+      for (const message of messages.slice(0, limit)) {
+        try {
+          const messageDetail = await gmail.users.messages.get({
+            userId: 'me',
+            id: message.id!,
+            format: 'full',
+          })
+
+          const payload = messageDetail.data.payload!
+          const headers = payload.headers || []
+          
+          const subject = headers.find((h: { name: string; value: string }) => h.name === 'Subject')?.value || ''
+          const sender = headers.find((h: { name: string; value: string }) => h.name === 'From')?.value || ''
+          const recipient = headers.find((h: { name: string; value: string }) => h.name === 'To')?.value || ''
+          const date = headers.find((h: { name: string; value: string }) => h.name === 'Date')?.value || ''
+          
+          // Extract body text
+          let body = ''
+          if (payload.body?.data) {
+            body = Buffer.from(payload.body.data, 'base64').toString()
+          } else if (payload.parts) {
+            for (const part of payload.parts) {
+              if (part.mimeType === 'text/plain' && part.body?.data) {
+                body = Buffer.from(part.body.data, 'base64').toString()
+                break
+              }
+            }
+          }
+
+          // Generate embedding for relevance scoring
+          const emailText = `${subject} ${sender} ${body}`
+          const embedding = await this.generateEmbedding(emailText)
+          const queryEmbedding = await this.generateEmbedding(query)
+          const similarity = this.cosineSimilarity(queryEmbedding, embedding)
+
+          // For Gmail API results, use lower threshold since Gmail already filtered by query
+          // Also boost relevance for direct matches (from/to queries)
+          let adjustedRelevance = similarity
+          if (query.toLowerCase().includes('from:') || query.toLowerCase().includes('to:')) {
+            adjustedRelevance = Math.max(similarity, 0.8) // Boost relevance for direct address matches
+          }
+          
+          if (adjustedRelevance > 0.3) { // Lower threshold for Gmail API results
+            results.push({
+              type: 'email' as const,
+              id: message.id!,
+              subject,
+              sender,
+              recipient,
+              content: body.substring(0, 300) + '...',
+              date: new Date(date),
+              relevance: adjustedRelevance,
+            })
+          }
+        } catch (error) {
+          console.error('Error processing message:', error)
+          continue
+        }
+      }
+
+      console.log('📧 Gmail search found emails:', {
+        count: results.length,
+        emails: results.map(email => ({
+          id: email.id,
+          subject: email.subject,
+          sender: email.sender,
+          relevance: email.relevance
+        }))
+      })
+
+      return results.sort((a, b) => b.relevance - a.relevance)
+    } catch (error) {
+      console.error('Error searching Gmail:', error)
+      // Fallback to database search
+      return await this.searchEmailsFromDatabase(query, limit)
     }
   }
 
@@ -79,44 +176,59 @@ export class RAGService {
       // Get all emails for this user
       const allEmails = await prisma.emailData.findMany({
         where: { userId: this.userId },
-        take: 100, // Get more records for better similarity matching
+        orderBy: { date: 'desc' },
       })
 
-      const results = allEmails
-        .map(email => {
-          let similarity = 0
-          
-          try {
-            // Parse stored embedding
-            const storedEmbedding = JSON.parse(email.embedding || '[]')
-            if (Array.isArray(storedEmbedding) && storedEmbedding.length > 0) {
-              similarity = this.cosineSimilarity(queryEmbedding, storedEmbedding)
-            } else {
-              // Fallback to text search if no embedding
-              const textMatch = `${email.subject} ${email.body}`.toLowerCase()
-              similarity = textMatch.includes(query.toLowerCase()) ? 0.5 : 0
-            }
-          } catch (error) {
-            // Fallback to text search
-            const textMatch = `${email.subject} ${email.body}`.toLowerCase()
+      // Calculate similarity scores
+      const emailsWithScores = allEmails.map(email => {
+        let similarity = 0
+        
+        try {
+          // Parse stored embedding
+          const storedEmbedding = JSON.parse(email.embedding || '[]')
+          if (Array.isArray(storedEmbedding) && storedEmbedding.length > 0) {
+            similarity = this.cosineSimilarity(queryEmbedding, storedEmbedding)
+          } else {
+            // Fallback to text search if no embedding
+            const textMatch = `${email.subject} ${email.sender} ${email.body}`.toLowerCase()
             similarity = textMatch.includes(query.toLowerCase()) ? 0.5 : 0
           }
+        } catch (error) {
+          // Fallback to text search
+          const textMatch = `${email.subject} ${email.sender} ${email.body}`.toLowerCase()
+          similarity = textMatch.includes(query.toLowerCase()) ? 0.5 : 0
+        }
 
-          return {
-            email,
-            similarity
-          }
-        })
-        .filter(item => item.similarity > 0.3) // Only include relevant results
+        return {
+          email,
+          similarity
+        }
+      })
+
+      // Sort by similarity and take top results
+      const topEmails = emailsWithScores
+        .filter(item => item.similarity > 0.1) // Only include relevant results
         .sort((a, b) => b.similarity - a.similarity)
         .slice(0, limit)
 
-      return results.map(item => ({
+      console.log('📧 Database search found emails:', {
+        count: topEmails.length,
+        emails: topEmails.map(item => ({
+          id: item.email.id,
+          subject: item.email.subject,
+          sender: item.email.sender,
+          similarity: item.similarity,
+          bodyPreview: item.email.body?.substring(0, 100) + '...'
+        }))
+      })
+
+      return topEmails.map(item => ({
         type: 'email' as const,
-        id: item.email.id,
+        id: item.email.messageId,
         subject: item.email.subject,
         sender: item.email.sender,
-        content: item.email.body,
+        content: item.email.body?.substring(0, 300) + '...',
+        date: item.email.date,
         relevance: item.similarity,
       }))
     } catch (error) {
@@ -198,47 +310,49 @@ export class RAGService {
       const queryEmbedding = await this.generateEmbedding(query)
 
       // Get all contacts for this user
-      const allContacts = await prisma.emailData.findMany({
+      const allContacts = await prisma.hubspotContact.findMany({
         where: { userId: this.userId },
-        take: 100, // Get more records for better similarity matching
       })
 
-      const results = allContacts
-        .map((contact: any) => {
-          let similarity = 0
-          
-          try {
-            // Parse stored embedding
-            const storedEmbedding = JSON.parse(contact.embedding || '[]')
-            if (Array.isArray(storedEmbedding) && storedEmbedding.length > 0) {
-              similarity = this.cosineSimilarity(queryEmbedding, storedEmbedding)
-            } else {
-              // Fallback to text search if no embedding
-              const textMatch = `${contact.name} ${contact.email} ${contact.company}`.toLowerCase()
-              similarity = textMatch.includes(query.toLowerCase()) ? 0.5 : 0
-            }
-          } catch (error) {
-            // Fallback to text search
-            const textMatch = `${contact.name} ${contact.email} ${contact.company}`.toLowerCase()
+      // Calculate similarity scores
+      const contactsWithScores = allContacts.map(contact => {
+        let similarity = 0
+        
+        try {
+          // Parse stored embedding
+          const storedEmbedding = JSON.parse(contact.embedding || '[]')
+          if (Array.isArray(storedEmbedding) && storedEmbedding.length > 0) {
+            similarity = this.cosineSimilarity(queryEmbedding, storedEmbedding)
+          } else {
+            // Fallback to text search if no embedding
+            const textMatch = `${contact.firstName} ${contact.lastName} ${contact.email} ${contact.company}`.toLowerCase()
             similarity = textMatch.includes(query.toLowerCase()) ? 0.5 : 0
           }
+        } catch (error) {
+          // Fallback to text search
+          const textMatch = `${contact.firstName} ${contact.lastName} ${contact.email} ${contact.company}`.toLowerCase()
+          similarity = textMatch.includes(query.toLowerCase()) ? 0.5 : 0
+        }
 
-          return {
-            contact,
-            similarity
-          }
-        })
-        .filter((item: any) => item.similarity > 0.3) // Only include relevant results
-        .sort((a: any, b: any) => b.similarity - a.similarity)
+        return {
+          contact,
+          similarity
+        }
+      })
+
+      // Sort by similarity and take top results
+      const topContacts = contactsWithScores
+        .filter(item => item.similarity > 0.1) // Only include relevant results
+        .sort((a, b) => b.similarity - a.similarity)
         .slice(0, limit)
 
-      return results.map((item: any) => ({
+      return topContacts.map(item => ({
         type: 'contact' as const,
-        id: item.contact.id,
-        name: item.contact.name,
+        id: item.contact.contactId,
+        name: `${item.contact.firstName} ${item.contact.lastName}`.trim(),
         email: item.contact.email,
         company: item.contact.company,
-        content: `${item.contact.name} - ${item.contact.email}`,
+        content: `${item.contact.firstName} ${item.contact.lastName} - ${item.contact.email} - ${item.contact.company}`,
         relevance: item.similarity,
       }))
     } catch (error) {
@@ -252,47 +366,64 @@ export class RAGService {
       const queryEmbedding = await this.generateEmbedding(query)
 
       // Get all notes for this user
-      const allNotes = await prisma.emailData.findMany({
+      const allNotes = await prisma.hubspotNote.findMany({
         where: { userId: this.userId },
-        take: 100, // Get more records for better similarity matching
+        orderBy: { createdAt: 'desc' },
       })
 
-      const results = allNotes
-        .map((note: any) => {
-          let similarity = 0
-          
-          try {
-            // Parse stored embedding
-            const storedEmbedding = JSON.parse(note.embedding || '[]')
-            if (Array.isArray(storedEmbedding) && storedEmbedding.length > 0) {
-              similarity = this.cosineSimilarity(queryEmbedding, storedEmbedding)
-            } else {
-              // Fallback to text search if no embedding
-              const textMatch = note.content.toLowerCase()
-              similarity = textMatch.includes(query.toLowerCase()) ? 0.5 : 0
-            }
-          } catch (error) {
-            // Fallback to text search
-            const textMatch = note.content.toLowerCase()
-            similarity = textMatch.includes(query.toLowerCase()) ? 0.5 : 0
+      // Calculate similarity scores
+      const notesWithScores = allNotes.map(note => {
+        let similarity = 0
+        
+        try {
+          // Parse stored embedding
+          const storedEmbedding = JSON.parse(note.embedding || '[]')
+          if (Array.isArray(storedEmbedding) && storedEmbedding.length > 0) {
+            similarity = this.cosineSimilarity(queryEmbedding, storedEmbedding)
+          } else {
+            // Fallback to text search if no embedding
+            similarity = note.content.toLowerCase().includes(query.toLowerCase()) ? 0.5 : 0
           }
+        } catch (error) {
+          // Fallback to text search
+          similarity = note.content.toLowerCase().includes(query.toLowerCase()) ? 0.5 : 0
+        }
 
-          return {
-            note,
-            similarity
-          }
-        })
-        .filter((item: any) => item.similarity > 0.3) // Only include relevant results
-        .sort((a: any, b: any) => b.similarity - a.similarity)
+        return {
+          note,
+          similarity
+        }
+      })
+
+      // Sort by similarity and take top results
+      const topNotes = notesWithScores
+        .filter(item => item.similarity > 0.1) // Only include relevant results
+        .sort((a, b) => b.similarity - a.similarity)
         .slice(0, limit)
 
-      return results.map((item: any) => ({
-        type: 'note' as const,
-        id: item.note.id,
-        content: item.note.content,
-        createdAt: item.note.createdAt,
-        relevance: item.similarity,
-      }))
+      // Get contact information for each note
+      const notesWithContacts = await Promise.all(
+        topNotes.map(async (item) => {
+          const contact = await prisma.hubspotContact.findFirst({
+            where: {
+              userId: this.userId,
+              contactId: item.note.contactId,
+            },
+          })
+
+          return {
+            type: 'note' as const,
+            id: item.note.noteId,
+            contactId: item.note.contactId,
+            contactName: contact ? `${contact.firstName} ${contact.lastName}`.trim() : 'Unknown',
+            content: item.note.content,
+            date: item.note.createdAt,
+            relevance: item.similarity,
+          }
+        })
+      )
+
+      return notesWithContacts
     } catch (error) {
       console.error('Error searching notes:', error)
       return []
@@ -319,9 +450,12 @@ export class RAGService {
         this.searchMeetings(query, Math.ceil(limit / 4)),
       ])
 
-      return [...emails, ...contacts, ...notes, ...meetings]
+      // Combine and sort by relevance (simplified)
+      const allResults = [...emails, ...contacts, ...notes, ...meetings]
         .sort((a, b) => b.relevance - a.relevance)
         .slice(0, limit)
+
+      return allResults
     } catch (error) {
       console.error('Error in searchAll:', error)
       return []
@@ -351,13 +485,13 @@ export class RAGService {
       const context = {
         contacts: contacts,
         notes: notes,
-        summary: this.formatHubSpotContextSummary(contacts.map((c: any) => ({
+        summary: this.formatHubSpotContextSummary(contacts.map(c => ({
           contactId: c.id,
           email: c.email || '',
           firstName: c.name.split(' ')[0] || '',
           lastName: c.name.split(' ').slice(1).join(' ') || '',
           company: c.company || ''
-        })), notes.map((n: any) => ({
+        })), notes.map(n => ({
           noteId: n.id,
           content: n.content,
           createdAt: n.createdAt
@@ -399,13 +533,13 @@ export class RAGService {
     }
 
     const summary = []
-
+    
     if (contacts.length > 0) {
-      summary.push(`${contacts.length} relevant contact${contacts.length > 1 ? 's' : ''}`)
+      summary.push(`Found ${contacts.length} relevant contacts`)
     }
 
     if (notes.length > 0) {
-      summary.push(`${notes.length} relevant note${notes.length > 1 ? 's' : ''}`)
+      summary.push(`Found ${notes.length} relevant notes`)
     }
 
     return summary.join(', ') + '.'
@@ -417,9 +551,15 @@ export class RAGService {
     }
 
     const summary = []
+    
+    const contacts = results.filter(r => r.type === 'contact')
+    if (contacts.length > 0) {
+      summary.push(`Found ${contacts.length} relevant contacts`)
+    }
 
-    for (const result of results) {
-      summary.push(`${result.type} (${Math.round(result.relevance * 100)}% relevant)`)
+    const notes = results.filter(r => r.type === 'note')
+    if (notes.length > 0) {
+      summary.push(`Found ${notes.length} relevant notes`)
     }
 
     return summary.join(', ') + '.'

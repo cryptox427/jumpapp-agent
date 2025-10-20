@@ -198,13 +198,13 @@ export class RAGService {
       const queryEmbedding = await this.generateEmbedding(query)
 
       // Get all contacts for this user
-      const allContacts = await prisma.emailData.findMany({
+      const allContacts = await prisma.contactData.findMany({
         where: { userId: this.userId },
         take: 100, // Get more records for better similarity matching
       })
 
       const results = allContacts
-        .map((contact: any) => {
+        .map(contact => {
           let similarity = 0
           
           try {
@@ -228,11 +228,11 @@ export class RAGService {
             similarity
           }
         })
-        .filter((item: any) => item.similarity > 0.3) // Only include relevant results
-        .sort((a: any, b: any) => b.similarity - a.similarity)
+        .filter(item => item.similarity > 0.3) // Only include relevant results
+        .sort((a, b) => b.similarity - a.similarity)
         .slice(0, limit)
 
-      return results.map((item: any) => ({
+      return results.map(item => ({
         type: 'contact' as const,
         id: item.contact.id,
         name: item.contact.name,
@@ -252,13 +252,13 @@ export class RAGService {
       const queryEmbedding = await this.generateEmbedding(query)
 
       // Get all notes for this user
-      const allNotes = await prisma.emailData.findMany({
+      const allNotes = await prisma.noteData.findMany({
         where: { userId: this.userId },
         take: 100, // Get more records for better similarity matching
       })
 
       const results = allNotes
-        .map((note: any) => {
+        .map(note => {
           let similarity = 0
           
           try {
@@ -282,11 +282,11 @@ export class RAGService {
             similarity
           }
         })
-        .filter((item: any) => item.similarity > 0.3) // Only include relevant results
-        .sort((a: any, b: any) => b.similarity - a.similarity)
+        .filter(item => item.similarity > 0.3) // Only include relevant results
+        .sort((a, b) => b.similarity - a.similarity)
         .slice(0, limit)
 
-      return results.map((item: any) => ({
+      return results.map(item => ({
         type: 'note' as const,
         id: item.note.id,
         content: item.note.content,
@@ -351,13 +351,13 @@ export class RAGService {
       const context = {
         contacts: contacts,
         notes: notes,
-        summary: this.formatHubSpotContextSummary(contacts.map((c: any) => ({
+        summary: this.formatHubSpotContextSummary(contacts.map(c => ({
           contactId: c.id,
           email: c.email || '',
           firstName: c.name.split(' ')[0] || '',
           lastName: c.name.split(' ').slice(1).join(' ') || '',
           company: c.company || ''
-        })), notes.map((n: any) => ({
+        })), notes.map(n => ({
           noteId: n.id,
           content: n.content,
           createdAt: n.createdAt
