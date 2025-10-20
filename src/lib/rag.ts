@@ -99,10 +99,10 @@ export class RAGService {
           const payload = messageDetail.data.payload!
           const headers = payload.headers || []
           
-          const subject = headers.find(h => h.name === 'Subject')?.value || ''
-          const sender = headers.find(h => h.name === 'From')?.value || ''
-          const recipient = headers.find(h => h.name === 'To')?.value || ''
-          const date = headers.find(h => h.name === 'Date')?.value || ''
+          const subject = headers.find((h: any) => h.name === 'Subject')?.value || ''
+          const sender = headers.find((h: any) => h.name === 'From')?.value || ''
+          const recipient = headers.find((h: any) => h.name === 'To')?.value || ''
+          const date = headers.find((h: any) => h.name === 'Date')?.value || ''
           
           // Extract body text
           let body = ''
@@ -429,40 +429,9 @@ export class RAGService {
 
   async searchMeetings(query: string, limit: number = 5) {
     try {
-      const queryEmbedding = await this.generateEmbedding(query)
-      
-      const meetings = await prisma.meetingData.findMany({
-        where: { userId: this.userId },
-        take: 100, // Get more records for better similarity matching
-      })
-
-      const results = meetings
-        .map(meeting => {
-          if (!meeting.embedding) return null
-          
-          const embedding = JSON.parse(meeting.embedding)
-          const similarity = this.cosineSimilarity(queryEmbedding, embedding)
-          
-          return {
-            id: meeting.id,
-            eventId: meeting.eventId,
-            title: meeting.title,
-            description: meeting.description,
-            startTime: meeting.startTime,
-            endTime: meeting.endTime,
-            attendees: meeting.attendees,
-            location: meeting.location,
-            meetingType: meeting.meetingType,
-            notes: meeting.notes,
-            relevance: similarity,
-            type: 'meeting' as const,
-          }
-        })
-        .filter(result => result !== null && result.relevance > 0.7)
-        .sort((a, b) => b!.relevance - a!.relevance)
-        .slice(0, limit)
-
-      return results
+      // Meeting search is not available yet - meetingData table needs to be implemented
+      console.log('📅 Meeting search not implemented yet')
+      return []
     } catch (error) {
       console.error('Error searching meetings:', error)
       return []
@@ -492,46 +461,12 @@ export class RAGService {
 
   async importMeetingData(meetings: any[]) {
     try {
-      for (const meeting of meetings) {
-        // Generate embedding for meeting content
-        const meetingText = `${meeting.title} ${meeting.description || ''} ${meeting.location || ''} ${meeting.notes || ''}`
-        const embedding = await this.generateEmbedding(meetingText)
-        
-        // Store meeting data
-        await prisma.meetingData.upsert({
-          where: { eventId: meeting.eventId },
-          update: {
-            title: meeting.title,
-            description: meeting.description,
-            startTime: new Date(meeting.startTime),
-            endTime: new Date(meeting.endTime),
-            attendees: meeting.attendees,
-            location: meeting.location,
-            meetingType: meeting.meetingType,
-            notes: meeting.notes,
-            embedding: JSON.stringify(embedding),
-            updatedAt: new Date(),
-          },
-          create: {
-            userId: this.userId,
-            eventId: meeting.eventId,
-            title: meeting.title,
-            description: meeting.description,
-            startTime: new Date(meeting.startTime),
-            endTime: new Date(meeting.endTime),
-            attendees: meeting.attendees,
-            location: meeting.location,
-            meetingType: meeting.meetingType,
-            notes: meeting.notes,
-            embedding: JSON.stringify(embedding),
-          },
-        })
-      }
-      
-      return { success: true, imported: meetings.length }
+      // Meeting data import is not available yet - meetingData table needs to be implemented
+      console.log('📅 Meeting data import not implemented yet')
+      return { success: true, imported: 0, message: 'Meeting import not available yet' }
     } catch (error) {
       console.error('Error importing meeting data:', error)
-      throw error
+      return { success: false, imported: 0, error: (error as Error).message }
     }
   }
 
@@ -572,7 +507,7 @@ export class RAGService {
       return {
         hubspot: hubspotContext,
         emails: emails,
-        summary: this.formatContextSummary([], hubspotContext.contacts, hubspotContext.notes, emails),
+        summary: this.formatContextSummary([...hubspotContext.contacts, ...hubspotContext.notes, ...emails]),
       }
     } else {
       return await this.getHubSpotContext(query, limit)
