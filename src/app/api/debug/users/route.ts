@@ -26,7 +26,7 @@ export async function GET() {
   } catch (error) {
     console.error('Debug API error:', error)
     return NextResponse.json(
-      { error: 'Internal server error', details: error.message },
+      { error: 'Internal server error', details: (error as Error)?.message ?? String(error) },
       { status: 500 }
     )
   }

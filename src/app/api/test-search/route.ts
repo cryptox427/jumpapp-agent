@@ -37,17 +37,20 @@ export async function GET(request: NextRequest) {
     for (const query of testQueries) {
       try {
         const searchResults = await ragService.searchEmails(query, 3)
-        results[query] = {
-          count: searchResults.length,
-          emails: searchResults.map(e => ({
-            subject: e.subject,
-            sender: e.sender,
-            bodyPreview: e.body?.substring(0, 100) + '...'
-          }))
+        ;(results as Record<string, unknown>)[query] = {
+          count: Array.isArray(searchResults) ? searchResults.length : 0,
+          emails: Array.isArray(searchResults)
+            ? searchResults.map((e: any) => ({
+                subject: e.subject,
+                sender: e.sender,
+                bodyPreview: typeof e.body === 'string' ? e.body.substring(0, 100) + '...' : ''
+              }))
+            : []
         }
       } catch (error) {
-        results[query] = { error: error.message }
+        ;(results as Record<string, unknown>)[query] = { error: (error as Error)?.message ?? String(error) }
       }
+
     }
 
     return NextResponse.json({
@@ -63,7 +66,7 @@ export async function GET(request: NextRequest) {
     console.error('Test search error:', error)
     return NextResponse.json({ 
       error: 'Failed to test search',
-      details: error.message 
+      details: (error as Error)?.message ?? String(error)
     }, { status: 500 })
   }
 }

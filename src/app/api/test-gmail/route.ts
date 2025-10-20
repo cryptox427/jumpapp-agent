@@ -43,9 +43,9 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({
         success: false,
         error: 'Gmail API Error',
-        details: apiError.message,
-        code: apiError.code,
-        status: apiError.status
+        details: (apiError as Error).message,
+        code: (apiError as any).code,
+        status: (apiError as any).status
       }, { status: 400 })
     }
 
@@ -53,7 +53,7 @@ export async function GET(request: NextRequest) {
     console.error('Gmail test error:', error)
     return NextResponse.json({ 
       error: 'Failed to test Gmail API',
-      details: error.message 
+      details: (error as Error).message 
     }, { status: 500 })
   }
 }

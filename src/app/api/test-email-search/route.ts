@@ -36,7 +36,7 @@ export async function GET(request: NextRequest) {
     console.error('Email search test error:', error)
     return NextResponse.json({ 
       error: 'Failed to test email search',
-      details: error.message 
+      details: (error as Error).message 
     }, { status: 500 })
   }
 }

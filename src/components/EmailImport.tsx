@@ -36,7 +36,7 @@ export function EmailImport() {
         setImportResult(`❌ Error: ${errorMessage}`)
       }
     } catch (error) {
-      setImportResult(`❌ Error: ${error.message}`)
+      setImportResult(`❌ Error: ${(error as Error)?.message ?? String(error)}`)
     } finally {
       setIsImporting(false)
     }
@@ -62,7 +62,7 @@ export function EmailImport() {
         setImportResult(`❌ Error: ${result.error}`)
       }
     } catch (error) {
-      setImportResult(`❌ Error: ${error.message}`)
+      setImportResult(`❌ Error: ${(error as Error)?.message ?? String(error)}`)
     } finally {
       setIsImporting(false)
     }

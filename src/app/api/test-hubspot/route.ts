@@ -38,7 +38,7 @@ export async function GET() {
     console.error('HubSpot test error:', error)
     return NextResponse.json({ 
       error: 'Failed to test HubSpot configuration',
-      details: error.message 
+      details: (error as Error).message 
     }, { status: 500 })
   }
 }

@@ -127,7 +127,10 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('Sample email import error:', error)
     return NextResponse.json(
-      { error: 'Failed to import sample emails', details: error.message },
+      { 
+        error: 'Failed to import sample emails', 
+        details: typeof error === 'object' && error !== null && 'message' in error ? (error as any).message : String(error)
+      },
       { status: 500 }
     )
   }

@@ -78,7 +78,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('RAG Import API error:', error)
     return NextResponse.json(
-      { error: 'Import failed', details: error.message },
+      { error: 'Import failed', details: (error as Error)?.message ?? String(error) },
       { status: 500 }
     )
   }
