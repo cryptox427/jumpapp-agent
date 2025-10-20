@@ -32,7 +32,7 @@ export class TaskManager {
         title,
         description,
         type,
-        metadata: metadata as any,
+        metadata: metadata ? JSON.parse(JSON.stringify(metadata)) : undefined,
         totalSteps: 1,
         currentStep: 0,
         stepData: {},

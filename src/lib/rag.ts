@@ -41,7 +41,7 @@ export class RAGService {
     return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB))
   }
 
-  async searchEmails(query: string, limit: number = 5, googleService?: { searchEmails: (query: string, limit: number) => Promise<any[]> }) {
+  async searchEmails(query: string, limit: number = 5, googleService?: { searchEmails: (query: string, limit: number) => Promise<unknown[]> }) {
     try {
       console.log('🔍 RAG searchEmails called with:', {
         query,
@@ -61,13 +61,13 @@ export class RAGService {
     }
   }
 
-  private async searchEmailsFromGmail(query: string, limit: number, googleService: { searchEmails: (query: string, limit: number) => Promise<any[]> }) {
+  private async searchEmailsFromGmail(query: string, _limit: number, _googleService: { searchEmails: (query: string, limit: number) => Promise<unknown[]> }) {
     try {
       // Simplified Gmail search for now
       console.log('📧 Gmail search simulation for query:', query)
       return []
-    } catch (error) {
-      console.error('Error searching emails from Gmail:', error)
+    } catch {
+      console.error('Error searching emails from Gmail')
       return []
     }
   }
@@ -204,7 +204,7 @@ export class RAGService {
       })
 
       const results = allContacts
-        .map((contact: any) => {
+        .map((contact: { id: string; userId: string; createdAt: Date; updatedAt: Date; messageId: string; threadId: string; subject: string; sender: string; recipient: string; body: string; date: Date; labels: string; embedding: string | null }) => {
           let similarity = 0
           
           try {
@@ -214,12 +214,12 @@ export class RAGService {
               similarity = this.cosineSimilarity(queryEmbedding, storedEmbedding)
             } else {
               // Fallback to text search if no embedding
-              const textMatch = `${contact.name} ${contact.email} ${contact.company}`.toLowerCase()
+              const textMatch = `${contact.subject} ${contact.body} ${contact.sender}`.toLowerCase()
               similarity = textMatch.includes(query.toLowerCase()) ? 0.5 : 0
             }
           } catch (error) {
             // Fallback to text search
-            const textMatch = `${contact.name} ${contact.email} ${contact.company}`.toLowerCase()
+            const textMatch = `${contact.subject} ${contact.body} ${contact.sender}`.toLowerCase()
             similarity = textMatch.includes(query.toLowerCase()) ? 0.5 : 0
           }
 
@@ -228,21 +228,21 @@ export class RAGService {
             similarity
           }
         })
-        .filter((item: any) => item.similarity > 0.3) // Only include relevant results
-        .sort((a: any, b: any) => b.similarity - a.similarity)
+        .filter((item: { contact: { id: string; userId: string; createdAt: Date; updatedAt: Date; messageId: string; threadId: string; subject: string; sender: string; recipient: string; body: string; date: Date; labels: string; embedding: string | null }; similarity: number }) => item.similarity > 0.3) // Only include relevant results
+        .sort((a: { similarity: number }, b: { similarity: number }) => b.similarity - a.similarity)
         .slice(0, limit)
 
-      return results.map((item: any) => ({
+      return results.map((item: { contact: { id: string; userId: string; createdAt: Date; updatedAt: Date; messageId: string; threadId: string; subject: string; sender: string; recipient: string; body: string; date: Date; labels: string; embedding: string | null }; similarity: number }) => ({
         type: 'contact' as const,
         id: item.contact.id,
-        name: item.contact.name,
-        email: item.contact.email,
-        company: item.contact.company,
-        content: `${item.contact.name} - ${item.contact.email}`,
+        name: item.contact.sender,
+        email: item.contact.sender,
+        company: '',
+        content: `${item.contact.subject} - ${item.contact.sender}`,
         relevance: item.similarity,
       }))
-    } catch (error) {
-      console.error('Error searching contacts:', error)
+    } catch {
+      console.error('Error searching contacts')
       return []
     }
   }
@@ -258,7 +258,7 @@ export class RAGService {
       })
 
       const results = allNotes
-        .map((note: any) => {
+        .map((note: { id: string; userId: string; createdAt: Date; updatedAt: Date; subject: string; body: string; messageId: string; threadId: string; sender: string; recipient: string; date: Date; labels: string; embedding: string | null }) => {
           let similarity = 0
           
           try {
@@ -268,12 +268,12 @@ export class RAGService {
               similarity = this.cosineSimilarity(queryEmbedding, storedEmbedding)
             } else {
               // Fallback to text search if no embedding
-              const textMatch = note.content.toLowerCase()
+              const textMatch = `${note.subject} ${note.body}`.toLowerCase()
               similarity = textMatch.includes(query.toLowerCase()) ? 0.5 : 0
             }
           } catch (error) {
             // Fallback to text search
-            const textMatch = note.content.toLowerCase()
+            const textMatch = `${note.subject} ${note.body}`.toLowerCase()
             similarity = textMatch.includes(query.toLowerCase()) ? 0.5 : 0
           }
 
@@ -282,35 +282,35 @@ export class RAGService {
             similarity
           }
         })
-        .filter((item: any) => item.similarity > 0.3) // Only include relevant results
-        .sort((a: any, b: any) => b.similarity - a.similarity)
+        .filter((item: { note: { id: string; userId: string; createdAt: Date; updatedAt: Date; subject: string; body: string; messageId: string; threadId: string; sender: string; recipient: string; date: Date; labels: string; embedding: string | null }; similarity: number }) => item.similarity > 0.3) // Only include relevant results
+        .sort((a: { similarity: number }, b: { similarity: number }) => b.similarity - a.similarity)
         .slice(0, limit)
 
-      return results.map((item: any) => ({
+      return results.map((item: { note: { id: string; userId: string; createdAt: Date; updatedAt: Date; subject: string; body: string; messageId: string; threadId: string; sender: string; recipient: string; date: Date; labels: string; embedding: string | null }; similarity: number }) => ({
         type: 'note' as const,
         id: item.note.id,
-        content: item.note.content,
+        content: `${item.note.subject} - ${item.note.body}`,
         createdAt: item.note.createdAt,
         relevance: item.similarity,
       }))
-    } catch (error) {
-      console.error('Error searching notes:', error)
+    } catch {
+      console.error('Error searching notes')
       return []
     }
   }
 
-  async searchMeetings(query: string, limit: number = 5) {
+  async searchMeetings(query: string, _limit: number = 5) {
     try {
       // Meeting search is not available yet - meetingData table needs to be implemented
-      console.log('📅 Meeting search not implemented yet')
+      console.log('📅 Meeting search not implemented yet for query:', query)
       return []
-    } catch (error) {
-      console.error('Error searching meetings:', error)
+    } catch {
+      console.error('Error searching meetings')
       return []
     }
   }
 
-  async searchAll(query: string, limit: number = 10, googleService?: { searchEmails: (query: string, limit: number) => Promise<any[]> }) {
+  async searchAll(query: string, limit: number = 10, googleService?: { searchEmails: (query: string, limit: number) => Promise<unknown[]> }) {
     try {
       const [emails, contacts, notes, meetings] = await Promise.all([
         this.searchEmails(query, Math.ceil(limit / 4), googleService),
@@ -328,7 +328,7 @@ export class RAGService {
     }
   }
 
-  async importMeetingData(meetings: { eventId: string; title: string; description?: string; startTime: string; endTime: string; attendees?: any; location?: string; meetingType?: string; notes?: string }[]) {
+  async importMeetingData(_meetings: { eventId: string; title: string; description?: string; startTime: string; endTime: string; attendees?: unknown; location?: string; meetingType?: string; notes?: string }[]) {
     try {
       // Meeting data import is not available yet - meetingData table needs to be implemented
       console.log('📅 Meeting data import not implemented yet')
@@ -351,13 +351,13 @@ export class RAGService {
       const context = {
         contacts: contacts,
         notes: notes,
-        summary: this.formatHubSpotContextSummary(contacts.map((c: any) => ({
+        summary: this.formatHubSpotContextSummary(contacts.map((c: { id: string; name: string; email?: string; company?: string }) => ({
           contactId: c.id,
           email: c.email || '',
           firstName: c.name.split(' ')[0] || '',
           lastName: c.name.split(' ').slice(1).join(' ') || '',
           company: c.company || ''
-        })), notes.map((n: any) => ({
+        })), notes.map((n: { id: string; content: string; createdAt: Date }) => ({
           noteId: n.id,
           content: n.content,
           createdAt: n.createdAt
@@ -375,7 +375,7 @@ export class RAGService {
     }
   }
 
-  async getContextForQuery(query: string, limit: number = 10, googleService?: { searchEmails: (query: string, limit: number) => Promise<any[]> }) {
+  async getContextForQuery(query: string, limit: number = 10, googleService?: { searchEmails: (query: string, limit: number) => Promise<unknown[]> }) {
     // Use HubSpot-focused context for AI responses, but include emails if Google service is available
     if (googleService) {
       const [hubspotContext, emails] = await Promise.all([
