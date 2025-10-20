@@ -64,10 +64,11 @@ export async function POST(request: NextRequest) {
     if (useRAG && totalDataCount > 0) {
       try {
         ragContext = await aiService.getRAGContext(message, 10)
+        const emailsCount = (ragContext as any)?.emails?.length ?? 0
         console.log('🔍 RAG Context retrieved:', {
-          emails: ragContext.emails?.length || 0,
-          contacts: ragContext.contacts?.length || 0,
-          notes: ragContext.notes?.length || 0
+          emails: emailsCount,
+          contacts: (ragContext as any)?.contacts?.length || 0,
+          notes: (ragContext as any)?.notes?.length || 0
         })
       } catch (error) {
         console.error('Error getting RAG context:', error)
@@ -106,16 +107,17 @@ This will import your HubSpot contacts and notes with AI embeddings for intellig
       success: true,
       response: response.content,
       ragContext: useRAG ? {
-        contactsFound: ragContext?.contacts?.length || 0,
-        notesFound: ragContext?.notes?.length || 0,
-        summary: ragContext?.summary || 'No relevant context found'
+        contactsFound: (ragContext as any)?.contacts?.length || (ragContext as any)?.hubspot?.contacts?.length || 0,
+        notesFound: (ragContext as any)?.notes?.length || (ragContext as any)?.hubspot?.notes?.length || 0,
+        summary: (ragContext as any)?.summary || (ragContext as any)?.hubspot?.summary || 'No relevant context found'
       } : null
     })
 
   } catch (error) {
     console.error('RAG Chat API error:', error)
+    const message = (error as Error)?.message ?? String(error)
     return NextResponse.json(
-      { error: 'Chat failed', details: error.message },
+      { error: 'Chat failed', details: message },
       { status: 500 }
     )
   }

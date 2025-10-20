@@ -90,7 +90,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error('Debug API error:', error)
     return NextResponse.json(
-      { error: 'Debug failed', details: error.message },
+      { error: 'Debug failed', details: (error as Error)?.message ?? String(error) },
       { status: 500 }
     )
   }

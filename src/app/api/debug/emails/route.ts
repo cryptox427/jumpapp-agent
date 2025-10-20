@@ -71,7 +71,7 @@ export async function GET(request: NextRequest) {
     console.error('Email debug error:', error)
     return NextResponse.json({ 
       error: 'Failed to debug emails',
-      details: error.message 
+      details: (error as Error)?.message ?? String(error)
     }, { status: 500 })
   }
 }
